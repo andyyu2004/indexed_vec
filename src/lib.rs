@@ -14,10 +14,10 @@ extern crate serde;
 use std::marker::PhantomData;
 
 use std::fmt::{self, Debug, Formatter};
-use std::vec::IntoIter;
+use std::iter::{Enumerate, Extend, FromIterator, IntoIterator, Map};
+use std::ops::{Index, IndexMut, Range};
 use std::slice::{Iter, IterMut};
-use std::iter::{Enumerate, Map, Extend, FromIterator, IntoIterator};
-use std::ops::{Range, Index, IndexMut};
+use std::vec::IntoIter;
 
 #[macro_export]
 macro_rules! newtype_index {
@@ -328,337 +328,410 @@ macro_rules! newtype_index {
 }
 
 pub trait Idx: Copy + Eq + Debug + 'static {
-  fn new(v: usize) -> Self;
-  fn index(self) -> usize;
+    fn new(v: usize) -> Self;
+    fn index(self) -> usize;
 }
 
 pub type Enumerated<I, IT> = Map<Enumerate<IT>, IntoIdxV<I, <IT as Iterator>::Item>>;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  vec: Vec<T>,
-  _marker: PhantomData<dyn Fn(&I) + Send + Sync + 'static>,
+    vec: Vec<T>,
+    _marker: PhantomData<dyn Fn(&I) + Send + Sync + 'static>,
 }
 
 impl<I, T> IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  pub fn new() -> Self { Default::default() }
-  pub fn with_capacity(cap: usize) -> Self {
-    IndexVec {
-      vec: Vec::with_capacity(cap),
-      _marker: PhantomData,
+    pub fn new() -> Self {
+        Default::default()
     }
-  }
-  pub fn from_elem<S>(elem: T, universe: &IndexVec<I, S>) -> Self
-    where T: Clone,
-  {
-    IndexVec {
-      vec: vec![elem; universe.len()],
-      _marker: PhantomData,
+
+    pub fn with_capacity(cap: usize) -> Self {
+        IndexVec { vec: Vec::with_capacity(cap), _marker: PhantomData }
     }
-  }
-  pub fn from_elem_n(elem: T, n: usize) -> Self
-    where T: Clone,
-  {
-    IndexVec {
-      vec: vec![elem; n],
-      _marker: PhantomData,
+
+    pub fn from_elem<S>(elem: T, universe: &IndexVec<I, S>) -> Self
+    where
+        T: Clone,
+    {
+        IndexVec { vec: vec![elem; universe.len()], _marker: PhantomData }
     }
-  }
-  pub fn len(&self) -> usize { self.vec.len() }
-  pub fn is_empty(&self) -> bool { self.vec.is_empty() }
-  pub fn into_iter(self) -> IntoIter<T> { self.vec.into_iter() }
-  pub fn into_iter_enumerated(self) -> Enumerated<I, IntoIter<T>> {
-    self.vec.into_iter().enumerate().map(into_idx_v)
-  }
-  pub fn iter(&self) -> Iter<T> { self.vec.iter() }
-  pub fn iter_mut(&mut self) -> IterMut<T> { self.vec.iter_mut() }
-  pub fn iter_enumerated(&self) -> Enumerated<I, Iter<T>> {
-    self.vec.iter().enumerate().map(into_idx_v)
-  }
-  pub fn iter_enumerated_mut(&mut self) -> Enumerated<I, IterMut<T>> {
-    self.vec.iter_mut().enumerate().map(into_idx_v)
-  }
-  pub fn indices(&self) -> Map<Range<usize>, IntoIdx<I>> {
-    (0..self.len()).map(|i| I::new(i) )
-  }
-  pub fn last_idx(&self) -> Option<I> {
-    if self.is_empty() {
-      None
-    } else {
-      Some(I::new(self.len() - 1))
+
+    pub fn from_elem_n(elem: T, n: usize) -> Self
+    where
+        T: Clone,
+    {
+        IndexVec { vec: vec![elem; n], _marker: PhantomData }
     }
-  }
-  pub fn next_idx(&self) -> I {
-    I::new(self.len())
-  }
-  pub fn shrink_to_fit(&mut self) { self.vec.shrink_to_fit() }
-  pub fn swap(&mut self, l: I, r: I) { self.vec.swap(l.index(), r.index()) }
-  pub fn truncate(&mut self, s: usize) { self.vec.truncate(s) }
-  pub fn get(&self, i: I) -> Option<&T> { self.vec.get(i.index()) }
-  pub fn get_mut(&mut self, i: I) -> Option<&mut T> { self.vec.get_mut(i.index()) }
 
-  pub fn last(&self) -> Option<&T> {
-    self.vec.last()
-  }
-  pub fn last_mut(&mut self) -> Option<&mut T> {
-    self.vec.last_mut()
-  }
+    pub fn len(&self) -> usize {
+        self.vec.len()
+    }
 
-  pub fn reserve(&mut self, s: usize) {
-    self.vec.reserve(s);
-  }
+    pub fn is_empty(&self) -> bool {
+        self.vec.is_empty()
+    }
 
-  pub fn clear(&mut self) { self.vec.clear(); }
+    pub fn into_iter(self) -> IntoIter<T> {
+        self.vec.into_iter()
+    }
 
-  pub fn resize(&mut self, s: usize, v: T)
-    where T: Clone,
-  {
-    self.vec.resize(s, v);
-  }
-  pub fn binary_search(&self, v: &T) -> Result<I, I>
-    where T: Ord,
-  {
-    self.vec.binary_search(v)
-      .map(I::new)
-      .map_err(I::new)
-  }
-  pub fn push(&mut self, d: T) -> I {
-    let idx = self.next_idx();
-    self.vec.push(d);
-    idx
-  }
+    pub fn into_iter_enumerated(self) -> Enumerated<I, IntoIter<T>> {
+        self.vec.into_iter().enumerate().map(into_idx_v)
+    }
 
-  pub fn push_with_idx<F>(&mut self, f: F) -> I
-    where F: FnOnce(I) -> T,
-  {
-    let idx = self.next_idx();
-    let d = f(idx);
-    self.vec.push(d);
-    idx
-  }
+    pub fn iter(&self) -> Iter<T> {
+        self.vec.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        self.vec.iter_mut()
+    }
+
+    pub fn iter_enumerated(&self) -> Enumerated<I, Iter<T>> {
+        self.vec.iter().enumerate().map(into_idx_v)
+    }
+
+    pub fn iter_enumerated_mut(&mut self) -> Enumerated<I, IterMut<T>> {
+        self.vec.iter_mut().enumerate().map(into_idx_v)
+    }
+
+    pub fn indices(&self) -> Map<Range<usize>, IntoIdx<I>> {
+        (0..self.len()).map(|i| I::new(i))
+    }
+
+    pub fn last_idx(&self) -> Option<I> {
+        if self.is_empty() { None } else { Some(I::new(self.len() - 1)) }
+    }
+
+    pub fn next_idx(&self) -> I {
+        I::new(self.len())
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.vec.shrink_to_fit()
+    }
+
+    pub fn swap(&mut self, l: I, r: I) {
+        self.vec.swap(l.index(), r.index())
+    }
+
+    pub fn truncate(&mut self, s: usize) {
+        self.vec.truncate(s)
+    }
+
+    pub fn get(&self, i: I) -> Option<&T> {
+        self.vec.get(i.index())
+    }
+
+    pub fn get_mut(&mut self, i: I) -> Option<&mut T> {
+        self.vec.get_mut(i.index())
+    }
+
+    pub fn last(&self) -> Option<&T> {
+        self.vec.last()
+    }
+
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        self.vec.last_mut()
+    }
+
+    pub fn reserve(&mut self, s: usize) {
+        self.vec.reserve(s);
+    }
+
+    pub fn clear(&mut self) {
+        self.vec.clear();
+    }
+
+    pub fn resize(&mut self, s: usize, v: T)
+    where
+        T: Clone,
+    {
+        self.vec.resize(s, v);
+    }
+
+    pub fn binary_search(&self, v: &T) -> Result<I, I>
+    where
+        T: Ord,
+    {
+        self.vec.binary_search(v).map(I::new).map_err(I::new)
+    }
+
+    pub fn push(&mut self, d: T) -> I {
+        let idx = self.next_idx();
+        self.vec.push(d);
+        idx
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        self.vec.as_slice()
+    }
+
+    pub fn push_with_idx<F>(&mut self, f: F) -> I
+    where
+        F: FnOnce(I) -> T,
+    {
+        let idx = self.next_idx();
+        let d = f(idx);
+        self.vec.push(d);
+        idx
+    }
 }
 
 // Whether `IndexVec` is `Send` depends only on the data,
 // not the phantom data.
-unsafe impl<I: Idx, T> Send for IndexVec<I, T> where T: Send {}
+unsafe impl<I: Idx, T> Send for IndexVec<I, T> where T: Send
+{
+}
 
 impl<I, T> Default for IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  fn default() -> Self {
-    IndexVec {
-      vec: vec![],
-      _marker: PhantomData,
+    fn default() -> Self {
+        IndexVec { vec: vec![], _marker: PhantomData }
     }
-  }
 }
 
 impl<I, T> Index<I> for IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  type Output = T;
-  fn index(&self, i: I) -> &T { &self.vec[i.index()] }
+    type Output = T;
+
+    fn index(&self, i: I) -> &T {
+        &self.vec[i.index()]
+    }
 }
 impl<I, T> IndexMut<I> for IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  fn index_mut(&mut self, i: I) -> &mut T { &mut self.vec[i.index()] }
+    fn index_mut(&mut self, i: I) -> &mut T {
+        &mut self.vec[i.index()]
+    }
 }
 impl<I, T> Extend<T> for IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  fn extend<IT>(&mut self, iter: IT)
-    where IT: IntoIterator<Item = T>,
-  {
-    self.vec.extend(iter)
-  }
+    fn extend<IT>(&mut self, iter: IT)
+    where
+        IT: IntoIterator<Item = T>,
+    {
+        self.vec.extend(iter)
+    }
 }
 impl<I, T> FromIterator<T> for IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  fn from_iter<IT>(iter: IT) -> Self
-    where IT: IntoIterator<Item = T>,
-  {
-    IndexVec {
-      vec: FromIterator::from_iter(iter),
-      _marker: PhantomData,
+    fn from_iter<IT>(iter: IT) -> Self
+    where
+        IT: IntoIterator<Item = T>,
+    {
+        IndexVec { vec: FromIterator::from_iter(iter), _marker: PhantomData }
     }
-  }
 }
 impl<I, T> IntoIterator for IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  type Item = T;
-  type IntoIter = IntoIter<T>;
+    type IntoIter = IntoIter<T>;
+    type Item = T;
 
-  fn into_iter(self) -> IntoIter<T> { self.into_iter() }
+    fn into_iter(self) -> IntoIter<T> {
+        self.into_iter()
+    }
 }
 impl<'a, I, T> IntoIterator for &'a IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  type Item = &'a T;
-  type IntoIter = Iter<'a, T>;
+    type IntoIter = Iter<'a, T>;
+    type Item = &'a T;
 
-  fn into_iter(self) -> Self::IntoIter {
-    self.iter()
-  }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
 impl<'a, I, T> IntoIterator for &'a mut IndexVec<I, T>
-  where I: Idx,
+where
+    I: Idx,
 {
-  type Item = &'a mut T;
-  type IntoIter = IterMut<'a, T>;
+    type IntoIter = IterMut<'a, T>;
+    type Item = &'a mut T;
 
-  fn into_iter(self) -> Self::IntoIter {
-    self.iter_mut()
-  }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
 }
 
 impl<I, T> Debug for IndexVec<I, T>
-  where I: Idx,
-        T: Debug,
+where
+    I: Idx,
+    T: Debug,
 {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    Debug::fmt(&self.vec, f)
-  }
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        Debug::fmt(&self.vec, f)
+    }
 }
 
-pub type IntoIdxV<I, T> = fn((usize, T, )) -> (I, T);
+pub type IntoIdxV<I, T> = fn((usize, T)) -> (I, T);
 pub type IntoIdx<I> = fn(usize) -> I;
 
-pub fn into_idx_v<I, T>((n, t, ): (usize, T)) -> (I, T)
-  where I: Idx,
+pub fn into_idx_v<I, T>((n, t): (usize, T)) -> (I, T)
+where
+    I: Idx,
 {
-  (I::new(n), t)
+    (I::new(n), t)
 }
 pub fn into_idx<I>(n: usize) -> I
-  where I: Idx,
+where
+    I: Idx,
 {
-  I::new(n)
+    I::new(n)
 }
 
 #[cfg(feature = "serial")]
 impl<I, T> serde::Serialize for IndexVec<I, T>
-  where I: Idx,
-        T: serde::Serialize,
+where
+    I: Idx,
+    T: serde::Serialize,
 {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer,
-  {
-    use serde::ser::SerializeSeq;
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
 
-    let mut seq = serializer.serialize_seq(Some(self.len()))?;
-    for e in self.iter() {
-      seq.serialize_element(e)?;
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for e in self.iter() {
+            seq.serialize_element(e)?;
+        }
+        seq.end()
     }
-    seq.end()
-  }
 }
 #[cfg(feature = "serial")]
 impl<'de, I, T> serde::Deserialize<'de> for IndexVec<I, T>
-  where I: Idx,
-        T: serde::Deserialize<'de>,
+where
+    I: Idx,
+    T: serde::Deserialize<'de>,
 {
-  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: serde::Deserializer<'de>,
-  {
-    use serde::de::{Visitor, SeqAccess, };
-
-    struct SeqVisitor<InnerT, InnerI> {
-      _a: PhantomData<InnerI>,
-      _b: PhantomData<InnerT>,
-    }
-
-    impl<'de, InnerI, InnerT> Visitor<'de> for SeqVisitor<InnerI, InnerT>
-      where InnerI: Idx,
-            InnerT: serde::Deserialize<'de>,
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
     {
-      type Value = IndexVec<InnerI, InnerT>;
+        use serde::de::{SeqAccess, Visitor};
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a sequence")
-      }
-
-      fn visit_seq<A>(self, mut access: A) -> Result<Self::Value, A::Error>
-        where A: SeqAccess<'de>,
-      {
-        let mut out = IndexVec::with_capacity(access.size_hint().unwrap_or_default());
-
-        while let Some(e) = access.next_element()? {
-          out.push(e);
+        struct SeqVisitor<InnerT, InnerI> {
+            _a: PhantomData<InnerI>,
+            _b: PhantomData<InnerT>,
         }
 
-        Ok(out)
-      }
+        impl<'de, InnerI, InnerT> Visitor<'de> for SeqVisitor<InnerI, InnerT>
+        where
+            InnerI: Idx,
+            InnerT: serde::Deserialize<'de>,
+        {
+            type Value = IndexVec<InnerI, InnerT>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a sequence")
+            }
+
+            fn visit_seq<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut out = IndexVec::with_capacity(access.size_hint().unwrap_or_default());
+
+                while let Some(e) = access.next_element()? {
+                    out.push(e);
+                }
+
+                Ok(out)
+            }
+        }
+
+        deserializer.deserialize_seq(SeqVisitor { _a: PhantomData, _b: PhantomData })
     }
 
-    deserializer.deserialize_seq(SeqVisitor {
-      _a: PhantomData,
-      _b: PhantomData,
-    })
-  }
-  fn deserialize_in_place<D>(deserializer: D, place: &mut Self)
-    -> Result<(), D::Error>
-    where D: serde::Deserializer<'de>,
-  {
-    use serde::de::{Visitor, SeqAccess, };
+    fn deserialize_in_place<D>(deserializer: D, place: &mut Self) -> Result<(), D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{SeqAccess, Visitor};
 
-    struct SeqVisitor<'a, InnerI, InnerT>(&'a mut IndexVec<InnerI, InnerT>)
-      where InnerI: Idx + 'a,
+        struct SeqVisitor<'a, InnerI, InnerT>(&'a mut IndexVec<InnerI, InnerT>)
+        where
+            InnerI: Idx + 'a,
             InnerT: 'a;
 
-    impl<'a, 'de, InnerI, InnerT> Visitor<'de> for SeqVisitor<'a, InnerI, InnerT>
-      where InnerI: Idx + 'a,
+        impl<'a, 'de, InnerI, InnerT> Visitor<'de> for SeqVisitor<'a, InnerI, InnerT>
+        where
+            InnerI: Idx + 'a,
             InnerT: serde::Deserialize<'de> + 'a,
-    {
-      type Value = ();
+        {
+            type Value = ();
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a sequence")
-      }
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a sequence")
+            }
 
-      fn visit_seq<A>(mut self, mut access: A) -> Result<Self::Value, A::Error>
-        where A: SeqAccess<'de>,
-      {
-        let out = &mut self.0;
-        out.clear();
-        out.reserve(access.size_hint().unwrap_or_default());
+            fn visit_seq<A>(mut self, mut access: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let out = &mut self.0;
+                out.clear();
+                out.reserve(access.size_hint().unwrap_or_default());
 
-        while let Some(e) = access.next_element()? {
-          out.push(e);
+                while let Some(e) = access.next_element()? {
+                    out.push(e);
+                }
+
+                Ok(())
+            }
         }
 
-        Ok(())
-      }
+        deserializer.deserialize_seq(SeqVisitor(place))
     }
-
-    deserializer.deserialize_seq(SeqVisitor(place))
-  }
 }
 
 #[cfg(test)]
 mod test {
-  use super::*;
+    use super::*;
 
-  newtype_index!(T);
-  #[test]
-  fn ensure_send() {
-    let i: IndexVec<T, usize> = IndexVec::default();
+    newtype_index!(T);
+    #[test]
+    fn ensure_send() {
+        let i: IndexVec<T, usize> = IndexVec::default();
 
-    fn force_send<T>(_: T) where T: Send { }
+        fn force_send<T>(_: T)
+        where
+            T: Send,
+        {
+        }
 
-    force_send(i);
-  }
-  #[test]
-  fn ensure_sync() {
-    let i: IndexVec<T, usize> = IndexVec::default();
+        force_send(i);
+    }
+    #[test]
+    fn ensure_sync() {
+        let i: IndexVec<T, usize> = IndexVec::default();
 
-    fn force_sync<T>(_: T) where T: Sync { }
+        fn force_sync<T>(_: T)
+        where
+            T: Sync,
+        {
+        }
 
-    force_sync(i);
-  }
+        force_sync(i);
+    }
 }
